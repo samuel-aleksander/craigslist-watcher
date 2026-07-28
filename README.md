@@ -1,85 +1,76 @@
-# Craigslist new-listing watcher
+# watcher
 
-A tiny bot that polls one Craigslist search every ~15 minutes, detects
-listings it hasn't seen before, and pushes each one to your phone via
-[ntfy.sh](https://ntfy.sh). Runs for free on GitHub Actions — no servers, no
-paid services.
+A tiny bot that runs every ~15 minutes on GitHub Actions and pushes alerts
+to a phone via [ntfy.sh](https://ntfy.sh). No servers, no paid services.
+It watches two kinds of things:
+
+1. **Craigslist** — one saved car search; every never-before-seen listing
+   becomes a push notification (title + price, tap to open the listing).
+2. **Berkeley classes** — enrollment pages on classes.berkeley.edu; a push
+   fires when a waitlist spot (or, where configured, a seat) opens up.
 
 ## How it works
 
-1. `watcher.py` fetches the search URL, parses the listings, and diffs them
-   against `seen.json` (a state file committed back to the repo after every
-   run — which also keeps the scheduled workflow from being auto-disabled).
-2. Each never-before-seen listing is POSTed to an ntfy topic.
-3. On a blocked/captcha page (non-200 or zero results), it exits without
-   touching `seen.json`, so a bad fetch can never wipe your history.
+- `watcher.py` is the core: it runs each source, sends notifications, and
+  persists per-source state. A failure in one source never touches the
+  other's state.
+- `sources.py` parses Craigslist search pages and diffs against `seen.json`.
+- `berkeley.py` reads the enrollment JSON embedded in each class page and
+  edge-triggers on "waitlist/seat just opened". It also appends every
+  reading to `berkeley_log.csv` to measure how often Berkeley actually
+  refreshes the numbers (undocumented).
+- State files are committed back to the repo after every run — which also
+  keeps the scheduled workflow from being auto-disabled for inactivity.
+- A blocked/captcha/unparseable page can never wipe state: that source is
+  skipped and retried next run.
 
-## Get notifications on your phone
+## Notifications
 
-1. Install the **ntfy** app ([iOS](https://apps.apple.com/app/ntfy/id1625396347) /
-   [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy)).
-2. Subscribe to this topic:
+The ntfy topic names are **secrets** (anyone who knows a topic name can
+subscribe to it or spam it — so they are not committed anywhere in this
+repo). They live in two GitHub Actions repo secrets:
 
-   ```
-   cl-crv-seattle-eg3t4caz
-   ```
+- `NTFY_TOPIC_CL` — Craigslist alerts
+- `NTFY_TOPIC_BERKELEY` — Berkeley alerts (sent at high priority)
 
-   The topic is a public ntfy topic with a random suffix — anyone who knows
-   the exact name can read it, so it's obscure-but-not-secret. That's fine for
-   Craigslist listings.
+To receive them: install the ntfy app
+([iOS](https://apps.apple.com/app/ntfy/id1625396347) /
+[Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy))
+and subscribe to both topic names.
 
-You can preview notifications in a browser at
-<https://ntfy.sh/cl-crv-seattle-eg3t4caz>.
+## Configuration
 
-## Changing what it watches
+Watched things are defined in code:
 
-Everything is configured with environment variables (with sane defaults), so
-the script runs unmodified on GitHub Actions or locally:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `CL_URL` | the CR-V search below | Craigslist search URL to poll |
-| `NTFY_TOPIC` | `cl-crv-seattle-eg3t4caz` | ntfy topic to notify |
-| `STATE_FILE` | `seen.json` | where the seen-list is stored |
-
-Default search URL:
-
-```
-https://www.craigslist.org/search/area/seattle?cat=sss&max_price=10000&min_price=2000&purveyor=owner&query=cr-v&sort=date&lang=es&cc=mx
-```
-
-To change the search, build a new URL on Craigslist, drop the trailing
-`#search=...` fragment, and either edit `DEFAULT_CL_URL` in
-[`sources.py`](sources.py) or set `CL_URL`.
-
-> **Note:** `cat=sss` is *all for sale*, not cars-only. With the
-> $2,000–$10,000 price band that's fine in practice; switch to `cat=cta`
-> (cars & trucks) if you want to exclude stray parts/accessories listings.
-
-### Watching more sites
-
-Sources are pluggable. Each entry in `default_sources()` in
-[`sources.py`](sources.py) fetches and parses one site into a list of
-`Listing(key, title, price, url)`; they all feed the shared diff-and-notify
-core. Add a `Source` with its own `parse` function to watch another site.
+- The Craigslist search URL: `DEFAULT_CL_URL` in [`sources.py`](sources.py)
+  (or override with `CL_URL`). Build a new URL on Craigslist and drop the
+  trailing `#search=...` fragment. Note: `cat=sss` is *all for sale*; switch
+  to `cat=cta` (cars & trucks) to exclude stray parts/accessories listings.
+- The class list: `CLASSES` in [`berkeley.py`](berkeley.py) — each entry has
+  a name, the classes.berkeley.edu URL, and `watch_seat` for whether to also
+  alert on open seats (waitlist openings are always watched).
+- More listing sites: add a `Source` with its own `parse` function to
+  `default_sources()` in [`sources.py`](sources.py).
 
 ## Running locally
 
-```bash
-pip install -r requirements.txt
-python watcher.py
+```sh
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+set -a; source .env.local; set +a   # provides the two NTFY_TOPIC_* vars
+.venv/bin/python watcher.py
 ```
 
-The first run seeds `seen.json` and sends nothing. Later runs notify on
-anything new.
+The first run seeds state and sends nothing. Later runs notify on changes.
+Exit codes: `0` clean, `1` a source had trouble (state kept, run tolerated
+by CI), `2` missing required env vars.
 
 ## Automation
 
 [`.github/workflows/watch.yml`](.github/workflows/watch.yml) runs the script
 every 15 minutes (`*/15 * * * *`, best-effort — GitHub may delay runs a few
-minutes) and commits `seen.json` when it changes. Trigger a manual run any
-time from the **Actions → watch → Run workflow** button (`workflow_dispatch`).
+minutes) and commits state when it changes. Trigger a manual run any time
+from the **Actions → watch → Run workflow** button (`workflow_dispatch`).
 
-If Craigslist starts consistently 403-blocking GitHub's runners, the fallback
-is to run the same script on a Mac via `launchd` — no code changes needed,
-just set the env vars.
+If a site starts consistently blocking GitHub's runners, the fallback is to
+run the same script on a Mac via `launchd` — no code changes needed, just
+set the env vars.
