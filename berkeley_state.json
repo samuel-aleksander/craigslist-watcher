@@ -12,6 +12,6 @@
   "INFO 271B": {
     "gone": false,
     "seat_open": false,
-    "wl_open": false
+    "wl_open": true
   }
 }
