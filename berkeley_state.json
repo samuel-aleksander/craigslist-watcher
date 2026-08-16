@@ -1,7 +1,7 @@
 {
   "COMPSCI 294-286": {
     "gone": false,
-    "seat_open": true,
+    "seat_open": false,
     "wl_open": false
   },
   "COMPSCI 294-320": {
