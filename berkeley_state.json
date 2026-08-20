@@ -11,7 +11,7 @@
   },
   "INFO 271B": {
     "gone": false,
-    "seat_open": false,
+    "seat_open": true,
     "wl_open": true
   }
 }
