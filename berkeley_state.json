@@ -6,8 +6,8 @@
   },
   "COMPSCI 294-320": {
     "gone": false,
-    "seat_open": true,
-    "wl_open": false
+    "seat_open": false,
+    "wl_open": true
   },
   "INFO 271B": {
     "gone": false,
