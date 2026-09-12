@@ -74,3 +74,18 @@ from the **Actions → watch → Run workflow** button (`workflow_dispatch`).
 If a site starts consistently blocking GitHub's runners, the fallback is to
 run the same script on a Mac via `launchd` — no code changes needed, just
 set the env vars.
+
+## Bike alerts (September 2026)
+
+The independent **bikes** workflow runs `bikes.py` every 15 minutes. It watches
+$250–$800 gravel bikes within the supplied 39-mile Hayward search and road bikes
+within the supplied 39-mile San Mateo search. Exact URLs are in `BIKE_SOURCES`.
+Both searches share `bikes_seen.json`, preventing duplicate alerts for listings
+appearing in both. First run seeds silently; subsequent runs send title, price,
+and a clickable listing link to the existing `NTFY_TOPIC_CL` phone subscription.
+
+The original **watch** workflow (cars + Berkeley) remains disabled. To pause or
+resume bikes, disable/enable **bikes** in GitHub Actions. To resume Berkeley alone,
+first configure a Berkeley-only entry point/workflow; enabling **watch** directly
+would restart cars too. Existing Berkeley configuration, secrets, and state are
+preserved.

@@ -70,9 +70,9 @@ def notify(topic: str, title: str, message: str, click: str, priority: str = Non
     resp.raise_for_status()
 
 
-def run_craigslist(topic: str) -> bool:
+def run_craigslist(topic: str, sources=None, state_file=None, title=NTFY_TITLE_CL) -> bool:
     """Diff listing sources against the seen-list. Returns False on trouble."""
-    state_file = os.environ.get("STATE_FILE", "seen.json")
+    state_file = state_file or os.environ.get("STATE_FILE", "seen.json")
     known: Optional[Set[str]] = None
     raw = load_json(state_file)
     if raw is not None:
@@ -81,7 +81,7 @@ def run_craigslist(topic: str) -> bool:
     known = known or set()
 
     all_listings: List[Listing] = []
-    for source in default_sources():
+    for source in (default_sources() if sources is None else sources):
         try:
             listings = source.fetch()
         except SourceBlocked as exc:
@@ -112,7 +112,7 @@ def run_craigslist(topic: str) -> bool:
     for listing in new_listings:
         body = f"{listing.title} — {listing.price}".strip(" —")
         try:
-            notify(topic, NTFY_TITLE_CL, body, listing.url)
+            notify(topic, title, body, listing.url)
             sent += 1
             print(f"notified: {body} | {listing.url}")
         except requests.RequestException as exc:

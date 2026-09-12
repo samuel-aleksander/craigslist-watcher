@@ -1,0 +1,58 @@
+name: bikes
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub cron is best-effort; runs may be delayed.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  # Never let two runs race on the same state commit.
+  group: bikes
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run watcher
+        env:
+          NTFY_TOPIC_CL: ${{ secrets.NTFY_TOPIC_CL }}
+        run: |
+          set +e
+          python bikes.py
+          code=$?
+          if [[ $code -eq 1 ]]; then
+            # A source looked blocked/unparseable; its state was left
+            # untouched and the others ran normally. Tolerate it so GitHub
+            # doesn't email a failed-run alert every time.
+            echo "::warning::watcher exited 1 (a source had trouble)"
+            exit 0
+          fi
+          exit $code
+
+      - name: Commit state if changed
+        if: always()
+        run: |
+          git add bikes_seen.json
+          if git diff --cached --quiet; then
+            echo "state unchanged; nothing to commit"
+          else
+            git config user.name  "watcher-bot"
+            git config user.email "watcher-bot@users.noreply.github.com"
+            git commit -m "Update bike state [skip ci]"
+            git pull --rebase origin main
+            git push
+          fi
