@@ -29,7 +29,7 @@ jobs:
 
       - name: Run watcher
         env:
-          NTFY_TOPIC_CL: ${{ secrets.NTFY_TOPIC_CL }}
+          NTFY_TOPIC_CL: ${{ secrets.NTFY_TOPIC_BIKES }}
         run: |
           set +e
           python bikes.py
